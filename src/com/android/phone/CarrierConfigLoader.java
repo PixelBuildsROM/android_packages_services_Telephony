@@ -1413,6 +1413,13 @@ public class CarrierConfigLoader extends ICarrierConfigLoader.Stub {
             boolean persistent) {
         mContext.enforceCallingOrSelfPermission(
                 android.Manifest.permission.MODIFY_PHONE_STATE, null);
+
+        // Do not allow shell UID to override the carrier config. This will not impact
+        // the CTS and telephony shell commands as they use different uids
+        if (TelephonyPermissions.isShell(getCallingUid())) {
+            throw new SecurityException("overrideConfig cannot be invoked by shell");
+        }
+
         int phoneId = SubscriptionManager.getPhoneId(subscriptionId);
         if (!SubscriptionManager.isValidPhoneId(phoneId)) {
             logd("Ignore invalid phoneId: " + phoneId + " for subId: " + subscriptionId);
