@@ -42,6 +42,7 @@ import android.os.Looper;
 import android.os.Message;
 import android.os.PersistableBundle;
 import android.os.Process;
+import android.os.Process;
 import android.os.RemoteException;
 import android.os.ResultReceiver;
 import android.os.UserHandle;
@@ -1417,7 +1418,7 @@ public class CarrierConfigLoader extends ICarrierConfigLoader.Stub {
 
         // Do not allow shell UID to override the carrier config. This will not impact
         // the CTS and telephony shell commands as they use different uids
-        if (TelephonyPermissions.isShell(getCallingUid())) {
+        if (TelephonyPermissions.isShell(getBinderCallingUid())) {
             throw new SecurityException("overrideConfig cannot be invoked by shell");
         }
 
@@ -1459,8 +1460,14 @@ public class CarrierConfigLoader extends ICarrierConfigLoader.Stub {
 
     private boolean isSystemApp() {
         try {
+            int callingUid = getBinderCallingUid();
+            if (isSdkSandboxUidInternal(callingUid)) {
+                loge("isSystemApp: rejected call from SDK sandbox with uid=" + callingUid);
+                return false;
+            }
+
             String callingPackage = mContext.getPackageManager().getNameForUid(
-                    Binder.getCallingUid());
+                    callingUid);
 
             ApplicationInfo appInfo = mContext.getPackageManager().getApplicationInfo(
                     callingPackage, 0);
@@ -1505,7 +1512,7 @@ public class CarrierConfigLoader extends ICarrierConfigLoader.Stub {
         // from clearing the cache is passed back to the carrier app. With the files successfully
         // deleted, this can return and we will eventually bind to the carrier app.
         String callingPackageName = mContext.getPackageManager().getNameForUid(
-                Binder.getCallingUid());
+                getBinderCallingUid());
         clearCachedConfigForPackage(callingPackageName);
         updateConfigForPhoneId(phoneId);
     }
@@ -1616,8 +1623,8 @@ public class CarrierConfigLoader extends ICarrierConfigLoader.Stub {
         IndentingPrintWriter indentPW = new IndentingPrintWriter(pw, "    ");
         if (mContext.checkCallingOrSelfPermission(android.Manifest.permission.DUMP)
                 != PackageManager.PERMISSION_GRANTED) {
-            indentPW.println("Permission Denial: can't dump carrierconfig from from pid="
-                    + Binder.getCallingPid() + ", uid=" + Binder.getCallingUid());
+            indentPW.println("Permission Denial: can't dump carrierconfig from pid="
+                    + Binder.getCallingPid() + ", uid=" + getBinderCallingUid());
             return;
         }
         String requestingPackage = null;
@@ -1700,7 +1707,7 @@ public class CarrierConfigLoader extends ICarrierConfigLoader.Stub {
      */
     private void enforceCallerIsSystemOrRequestingPackage(@NonNull String requestingPackage)
             throws SecurityException {
-        final int callingUid = Binder.getCallingUid();
+        final int callingUid = getBinderCallingUid();
         if (callingUid == Process.ROOT_UID || callingUid == Process.SYSTEM_UID
                 || callingUid == Process.SHELL_UID || callingUid == Process.PHONE_UID) {
             // Bug reports (dumpstate.cpp) run as SHELL, and let some other privileged UIDs through
@@ -1795,6 +1802,16 @@ public class CarrierConfigLoader extends ICarrierConfigLoader.Stub {
             indentPW.println("");
         }
         indentPW.decreaseIndent();
+    }
+
+    @VisibleForTesting
+    protected int getBinderCallingUid() {
+        return Binder.getCallingUid();
+    }
+
+    @VisibleForTesting
+    protected boolean isSdkSandboxUidInternal(int uid) {
+        return Process.isSdkSandboxUid(uid);
     }
 
     private boolean hasCarrierPrivileges(@NonNull String pkgName, int phoneId) {
